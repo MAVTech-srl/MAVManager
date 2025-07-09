@@ -11,8 +11,8 @@ import psutil
 
 # Initialize the app
 external_stylesheets = ['/home/davide/Documents/open3d_devel/dash_assets/style.css']
-app = Dash(external_stylesheets=external_stylesheets, assets_folder="assets")
-# app = Dash()
+# app = Dash(external_stylesheets=external_stylesheets, assets_folder="assets")
+app = Dash()
 
 import diskcache
 cache = diskcache.Cache("./cache")
@@ -22,32 +22,57 @@ background_callback_manager = DiskcacheManager(cache)
 Build top banner
 '''
 def build_banner():
-    return html.Div(
-        id="banner",
-        className="banner",
-        children=[
+
+    return html.Div(className="flex-container", children=[
+        # html.Div(),
+        # html.Div(),
+        html.Div(className="flex-item", children=[
             html.Div(
                 id="banner-text",
                 children=[
-                    html.H5("MAVTech Dashboard"),
-                    html.H6("Drone monitoring and logging"),
-                ],
-            ),
-            html.Button(className="banner button",
+                    html.H4("MAVManager"),
+                    # html.H6("Drone monitoring and logging"),
+                    html.Button(className="banner button",
                         id="help-button", children="HELP", n_clicks=0
-                    ),
-            html.Div(
-                # id="banner-logo",
-                className="banner logo",
-                children=[
-                    html.A(
-                        html.Img(id="logo", src=app.get_asset_url("mavtech.png")),
-                        href="https://www.mavtech.eu/it/",
-                    ),
+                    )
                 ],
-            ),
-        ],
-    )
+            )
+        ]),
+        html.Div(className="flex-item", children=[
+            html.A(html.Img(id="logo", src=app.get_asset_url("mavtech.png"), style={"height": "50px", "margin-right": "10px"}),
+                    href="https://www.mavtech.eu/it/",
+                    ),
+        ]),
+        # html.Div(className="flex-item"),
+        # html.Div(),
+        # html.Div(className="flex-item")
+    ])
+    # return html.Div(
+    #     id="banner",
+    #     className="banner",
+    #     children=[
+    #         html.Div(
+    #             id="banner-text",
+    #             children=[
+    #                 html.H5("MAVTech Dashboard"),
+    #                 html.H6("Drone monitoring and logging"),
+    #             ],
+    #         ),
+    #         html.Button(className="banner button",
+    #                     id="help-button", children="HELP", n_clicks=0
+    #                 ),
+    #         html.Div(
+    #             # id="banner-logo",
+    #             className="banner logo",
+    #             children=[
+    #                 html.A(
+    #                     html.Img(id="logo", src=app.get_asset_url("mavtech_small.png")),
+    #                     href="https://www.mavtech.eu/it/",
+    #                 ),
+    #             ],
+    #         ),
+    #     ],
+    # )
 
 
 # Check the tty device names
@@ -62,38 +87,38 @@ app.layout = [
     dcc.Tabs(className="custom tabs", children=[
         dcc.Tab(label='Control', children=[   
             html.Div(className="six columns", children=[
-                html.Div(className="row", children=[
+                html.Div(className="row", style={"padding": "10px"}, children=[
                     html.Br(),
                     dcc.Markdown(''' 
                                 Select which UART port is used to communicate with the autopilot
                                 '''),
                     dcc.Dropdown(subproc_stdout, id='tty-dropdown', placeholder='Select UART port...', clearable=True),
                 ]),
-                html.Div(className="row", id="lidar-model-selector", children=[
+                html.Div(className="row", id="lidar-model-selector", style={"padding": "10px"},  children=[
                     html.Br(),
                     dcc.Markdown('''Select LiDAR model'''),
                     dcc.Dropdown(['AVIA', 'MID360'], id='lidar-model-dropdown', placeholder='Select model...'),
                 ]),
                 
-                html.Div(className="row", hidden=True, id="return-mode-selector", children=[
+                html.Div(className="row", hidden=True, id="return-mode-selector", style={"padding": "10px"}, children=[
                     html.Br(),
                     dcc.Markdown('''Select LiDAR return mode'''),
                     dcc.Dropdown(['First single', 'Strongest single', 'Dual'], id='return-mode-dropdown', placeholder='Select return mode...'),
                 ]),
-                html.Div(className="row", hidden=True, id="scan-pattern-selector", children=[
+                html.Div(className="row", hidden=True, id="scan-pattern-selector", style={"padding": "10px"},  children=[
                     html.Br(),
                     dcc.Markdown('''Select LiDAR scan pattern'''),
                     dcc.Dropdown(['Repetitive', 'Non-repetitive'], id='scan-pattern-dropdown', placeholder='Select scan pattern...'),
                 ]),
                 html.Br(),
-                html.Div(className="two columns", id='slam-starter-div', children=[
+                html.Div(className="two columns", id='slam-starter-div', style={"padding": "10px"},  children=[
                     dcc.ConfirmDialogProvider(
                         children=html.Button(className='button hover', children=['Start SLAM'], style={'color': 'white', 'background': 'green', 'text-align': 'center'}),
                         id='slam-starter',
                         message='The UAV will start the SLAM process. Continue?'
                     ),
                 ]),
-                html.Div(className="two columns", hidden=True, id='slam-stopper-div', children=[
+                html.Div(className="two columns", hidden=True, id='slam-stopper-div', style={"padding": "10px"},  children=[
                     dcc.ConfirmDialogProvider(
                         children=html.Button(className='button hover', children=['Stop SLAM'], style={'color': 'white', 'background': 'red'}),
                         id='slam-stopper',
@@ -105,28 +130,38 @@ app.layout = [
             ]),
             html.Div(className="six columns", children=[
                 html.Br(),
-                dcc.Markdown(''' 
-                            Status
-                            '''),
-                # html.Div(className="row", id="status-terminal", children="")
-                dcc.Textarea(id="status-terminal", readOnly=True, style={'width': '100%', 'height': 200})
+                html.Div(className="row", style={"padding": "10px"}, children=[
+                    dcc.Markdown(''' 
+                                Status
+                                '''),
+                    dcc.Textarea(id="status-terminal", readOnly=True, style={'width': '100%', 'height': 200})
+                ])
             ]),
         ]),
         dcc.Tab(label='Logs', children=[
             html.Div(className="six columns", children=[
                 html.Br(),
-                dcc.Markdown("SLAM logs"),
-                dcc.Textarea(id="slam-terminal", readOnly=True, style={'width': '100%', 
-                                                                        'height': 200}),
+                html.Div(className="row", style={"padding": "10px"}, children=[
+                    dcc.Markdown("SLAM logs"),
+                    dcc.Textarea(id="slam-terminal", readOnly=True, style={'width': '100%', 
+                                                                            'height': 200}),
+                    html.Div(id="slam-pid")
+                ]),
                 #
                 html.Br(),
-                dcc.Markdown("MAVROS logs"),
-                dcc.Textarea(id="mavros-terminal", readOnly=True, style={'width': '100%', 'height': 200})
+                html.Div(className="row", style={"padding": "10px"}, children=[
+                    dcc.Markdown("MAVROS logs"),
+                    dcc.Textarea(id="mavros-terminal", readOnly=True, style={'width': '100%', 'height': 200}),
+                    html.Div(id="mavros-pid")
+                ]),
             ]),
             html.Div(className="six columns", children=[
                 html.Br(),
-                dcc.Markdown("PTP logs"),
-                dcc.Textarea(id="ptp-terminal", readOnly=True, style={'width': '100%', 'height': 200})
+                html.Div(className="row", style={"padding": "10px"}, children=[
+                    dcc.Markdown("PTP logs"),
+                    dcc.Textarea(id="ptp-terminal", readOnly=True, style={'width': '100%', 'height': 200}),
+                    html.Div(id="ptp-pid")
+                ])
             ]),
         ])
     ])
@@ -166,6 +201,8 @@ slam_children = []
     running=[
         (Output("slam-starter-div", "hidden"), True, False),
         (Output("slam-stopper-div", "hidden"), False, True),
+        # Set the pid of the child processes to dummy variables
+        (Output("slam-pid", "children"), slam_children, slam_children)
     ],
     cancel=[Input("slam-stopper", "submit_n_clicks")],
     manager=background_callback_manager,
@@ -227,9 +264,10 @@ def start_slam(set_progress, # This must be the first argument
 @callback(
     Output(component_id='dummy-div', component_property='children'),
     Input(component_id='slam-stopper', component_property='submit_n_clicks'),
+    State("slam-pid", "children"),
     prevent_initial_call=True
 )
-def stop_slam(submit_n_clicks):
+def stop_slam(submit_n_clicks, child_pid):
     stop_slam_processes()
     
 
@@ -243,4 +281,4 @@ def stop_slam_processes():
 
 # Run the app
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0")

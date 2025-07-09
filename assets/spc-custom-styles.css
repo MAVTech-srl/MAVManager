@@ -34,23 +34,66 @@ body {
   padding: 0 6rem;
 }
 
+.flex-container {
+  display: flex;
+  justify-content: space-between; /* Even spacing between items */
+  align-items: center;            /* Vertically center items (optional) */
+  padding: 10px;
+  background-color: #334fd7;
+}
+
+.flex-item {
+  /* background-color: #4CAF50; */
+  color: white;
+  padding: 20px;
+  text-align: center;
+  flex: 1; /* All items take equal width */
+  margin: 0 10px; /* Optional: spacing around each item */
+  border-radius: 5px;
+}
+
+/* Remove extra space on the outer edges */
+.flex-item:first-child {
+  margin-left: 0;
+}
+.flex-item:last-child {
+  margin-right: 0;
+}
+
+.flex-item button {
+  /* position: relative;
+  display: inline-block; */
+  color: #ffffff;
+  /* margin-right:  3px;
+  align-items: right;
+  text-align: center; */
+  height: 3rem;
+  width: 10rem;
+  line-height: 3rem;
+}
+
+.flex-item button:hover {
+  color: #ffffff;
+  border-color: whitesmoke;
+}
+
 .banner {
   height: fit-content;
   background-color: #334fd7;
   display: flex;
   flex-direction: row;
   align-items: center;
-  /* justify-content: space-between; */
+  justify-content: space-between;
   /* border-bottom: 1px solid #4B5460; */
   padding: 1rem 10rem;
   width: 100%;
   /* margin-bottom: 30px;   */
-  margin: 0 auto;
+  /* margin: 0 auto; */
 }
 
 
 .banner h5 {
-  display: inline-block;
+  /* display: inline-block; */
   font-family: 'Open Sans Semi Bold', sans-serif;
   font-weight: 500;
   line-height: 1.2;
@@ -61,15 +104,16 @@ body {
 }
 
 .banner h6 {
-  display: inline-block;
+  /* display: inline-block; */
   font-size: 1.6rem;
   line-height: 1;
   color: #ffffff;
 }
 
 .banner button {
-  display: inline-block;
-  color: #95969A;
+  /* position: relative;
+  display: inline-block; */
+  color: #ffffff;
   /* margin-right:  3px;
   align-items: right;
   text-align: center; */
@@ -79,14 +123,15 @@ body {
 }
 
 .banner-logo {
-  display: inline-block;
-  /* flex-direction: row; */
+  /* position:relative;
+  display: inline-block; */
+  flex-direction: row;
   /* align-items: right; */
   /* justify-content: flex-end; */
 }
 
 .banner button:hover {
-  color: #92e0d3;
+  color: #2c00da;
   border-color: whitesmoke;
 }
 
