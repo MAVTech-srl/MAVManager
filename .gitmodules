@@ -1,0 +1,4 @@
+[submodule "scripts/slam-ros2"]
+	path = scripts/slam-ros2
+	url = git@github.com:MAVTech-srl/slam-ros2.git
+	branch = devel
