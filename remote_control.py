@@ -47,32 +47,6 @@ def build_banner():
         # html.Div(),
         # html.Div(className="flex-item")
     ])
-    # return html.Div(
-    #     id="banner",
-    #     className="banner",
-    #     children=[
-    #         html.Div(
-    #             id="banner-text",
-    #             children=[
-    #                 html.H5("MAVTech Dashboard"),
-    #                 html.H6("Drone monitoring and logging"),
-    #             ],
-    #         ),
-    #         html.Button(className="banner button",
-    #                     id="help-button", children="HELP", n_clicks=0
-    #                 ),
-    #         html.Div(
-    #             # id="banner-logo",
-    #             className="banner logo",
-    #             children=[
-    #                 html.A(
-    #                     html.Img(id="logo", src=app.get_asset_url("mavtech_small.png")),
-    #                     href="https://www.mavtech.eu/it/",
-    #                 ),
-    #             ],
-    #         ),
-    #     ],
-    # )
 
 
 # Check the tty device names
@@ -81,8 +55,6 @@ subproc = subprocess.run(bash_command, shell=True, check=True, executable='/bin/
 subproc_stdout = str(subproc.stdout.decode()).split()
 # App layout
 app.layout = [
-    # html.Div(className='row', children='Remote Control',
-    #                 style={'textAlign': 'center', 'color': 'red', 'fontSize': 30}),
     build_banner(),
     dcc.Tabs(className="custom tabs", children=[
         dcc.Tab(label='Control', children=[   
@@ -201,8 +173,6 @@ slam_children = []
     running=[
         (Output("slam-starter-div", "hidden"), True, False),
         (Output("slam-stopper-div", "hidden"), False, True),
-        # Set the pid of the child processes to dummy variables
-        (Output("slam-pid", "children"), slam_children, slam_children)
     ],
     cancel=[Input("slam-stopper", "submit_n_clicks")],
     manager=background_callback_manager,
@@ -210,7 +180,8 @@ slam_children = []
     progress=[Output("ptp-terminal", "value"),
             Output("mavros-terminal", "value"),
             Output("slam-terminal", "value"),
-            Output("status-terminal", "value")]
+            Output("status-terminal", "value"),
+            Output("ptp-pid", "children")]
 )
 def start_slam(set_progress, # This must be the first argument
             submit_n_clicks: int,
@@ -219,13 +190,18 @@ def start_slam(set_progress, # This must be the first argument
             tty: str,
             model: str):
     # User clicked "start SLAM"
-    status_msg = "SLAM is starting with the following configuration:\n -> lidar model: {}\n  -> tty: {}\n  -> return mode: {}\n  -> scan pattern: {}\n".format(model, tty, return_mode, scan_pattern)
+    status_msg = "The following configuration was selected:\n -> lidar model: {}\n  -> tty: {}\n  -> return mode: {}\n  -> scan pattern: {}\n".format(model, tty, return_mode, scan_pattern)
+
     # Retrieve bash scripts
     dir_path = os.path.dirname(os.path.realpath(__file__))
     slam_script_path = os.path.join(dir_path, "scripts/slam-ros2/start_docker_slam_avia.sh")
-    start_slam_cmd = "bash /home/davide/Documents/MAVManager/scripts/slam-ros2/fast_lio_slam/start_docker_slam_avia.sh"
-    start_mavros_cmd = ""
-    start_ptp_cmd = ""
+    mavros_script_path = os.path.join(dir_path, "scripts/slam-ros2/start_mavros.sh")
+    ptp_script_path = os.path.join(dir_path, "scripts/slam-ros2/start_ptp.sh")
+    start_slam_cmd = "bash " + slam_script_path
+    start_mavros_cmd = "bash " + mavros_script_path
+    start_ptp_cmd = "bash " + ptp_script_path
+
+    # Start the needed processes
     slam_subprocess = subprocess.Popen(start_slam_cmd, stdout=subprocess.PIPE, shell=True)
     mavros_subprocess = subprocess.Popen(start_mavros_cmd, stdout=subprocess.PIPE, shell=True)
     ptp_subprocess = subprocess.Popen(start_ptp_cmd, stdout=subprocess.PIPE, shell=True)
@@ -241,6 +217,9 @@ def start_slam(set_progress, # This must be the first argument
 
     global slam_children
     slam_children = slam_parent.children(recursive=True)
+    slam_children_pid = []
+    for pid in slam_children:
+        slam_children_pid.append(pid.pid)
     mavros_pid = mavros_subprocess.pid
     ptp_pid = ptp_subprocess.pid
 
@@ -258,26 +237,20 @@ def start_slam(set_progress, # This must be the first argument
         #
         ptp_line = ptp_subprocess.stdout.readline().decode() + ptp_line
         
-        set_progress((ptp_line, mavros_line, slam_line, status_msg))
+        set_progress((ptp_line, mavros_line, slam_line, status_msg, ptp_pid))
 
 
 @callback(
     Output(component_id='dummy-div', component_property='children'),
     Input(component_id='slam-stopper', component_property='submit_n_clicks'),
-    State("slam-pid", "children"),
+    State("ptp-pid", "children"),
     prevent_initial_call=True
 )
 def stop_slam(submit_n_clicks, child_pid):
-    stop_slam_processes()
-    
-
-def stop_slam_processes():
-    global slam_pid, mavros_pid, ptp_pid, slam_children
-    os.kill(slam_pid, signal.SIGKILL)
-    os.kill(mavros_pid, signal.SIGKILL)
-    os.kill(ptp_pid, signal.SIGKILL)
-    for pid in slam_children:
-        os.kill(pid, signal.SIGKILL)
+    subprocess.run("docker container stop fast-lio-slam", shell=True)
+    subprocess.run("docker container stop mavros", shell=True)
+    # TODO: kill ptp process!! os.kill(ptp_pid, signal.SIGKILL)
+    # subprocess.run()
 
 # Run the app
 if __name__ == '__main__':
