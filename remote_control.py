@@ -53,7 +53,7 @@ def build_banner():
 
 
 # Check the tty device names
-bash_command = "ls -v /dev/ | awk '/^(ttyA|ttyU)/'" # List all files that begin with ttyA or ttyU
+bash_command = "ls -v /dev/ | awk '/^(tty[A-Za-z])/'" # List all files that begin with tty + letter
 subproc = subprocess.run(bash_command, shell=True, check=True, executable='/bin/bash', stdout=subprocess.PIPE)
 subproc_stdout = str(subproc.stdout.decode()).split()
 
