@@ -97,7 +97,7 @@ app.layout = [
                 html.Br(),
                 html.Div(className="two columns", id='slam-starter-div', style={"padding": "10px"},  children=[
                     dcc.ConfirmDialogProvider(
-                        children=html.Button(className='button hover', children=['Start SLAM'], style={'color': 'white', 'background': 'green', 'text-align': 'center'}),
+                        children=html.Button(className='button hover', id="slam-starter-button", children=['Start SLAM'], style={'color': 'white', 'background': 'green', 'text-align': 'center'}),
                         id='slam-starter',
                         message='The UAV will start the SLAM process. Continue?'
                     ),
@@ -109,6 +109,9 @@ app.layout = [
                         message='Do you want to stop the SLAM process?'
                     ), 
                 ]),
+                html.Div(className="two columns", hidden=True, id='slam-stopping-div', style={"padding": "10px"},  children=[
+                        html.Button(className='button', children=['Stopping SLAM...'], style={'color': 'black', 'background': 'orange'}, disabled=True)
+                ]),
                 html.Div(id='button-div'),
                 html.Div(id="dummy-div")
             ]),
@@ -118,7 +121,7 @@ app.layout = [
                     dcc.Markdown(''' 
                                 Status
                                 '''),
-                    dcc.Textarea(id="status-terminal", readOnly=True, style={'width': '100%', 'height': 200})
+                    dcc.Textarea(id="status-terminal", readOnly=True, style={'width': '100%', 'height': 300})
                 ])
             ]),
         ]),
@@ -138,14 +141,6 @@ app.layout = [
                     dcc.Textarea(id="mavros-terminal", readOnly=True, style={'width': '100%', 'height': 200}),
                     html.Div(id="mavros-pid")
                 ]),
-            ]),
-            html.Div(className="six columns", children=[
-                html.Br(),
-                html.Div(className="row", style={"padding": "10px"}, children=[
-                    dcc.Markdown("PTP logs"),
-                    dcc.Textarea(id="ptp-terminal", readOnly=True, style={'width': '100%', 'height': 200}),
-                    html.Div(id="ptp-pid")
-                ])
             ]),
         ])
     ])
@@ -200,11 +195,6 @@ def select_lidar_model(model):
     else:
         return True, True
 
-slam_pid = 0
-mavros_pid = 0
-ptp_pid = 0
-slam_children = []
-
 # START SLAM callback
 @callback(
     Output(component_id='button-div', component_property='children'),
@@ -216,8 +206,9 @@ slam_children = []
     State('lidar-model-dropdown', 'value'),
     background=True,
     running=[
-        (Output("slam-starter-div", "hidden"), True, False),
+        (Output("slam-starter-div", "hidden"), True, True),
         (Output("slam-stopper-div", "hidden"), False, True),
+        (Output(component_id="slam-stopping-div", component_property="hidden"), True, False)
     ],
     cancel=[Input("slam-stopper", "submit_n_clicks")],
     manager=background_callback_manager,
@@ -234,7 +225,6 @@ def start_slam(set_progress, # This must be the first argument
             baud: int,
             model: str):
     # User clicked "start SLAM"
-    status_msg = "The following configuration was selected:\n -> lidar model: {}\n  -> tty: {}\n  -> return mode: {}\n  -> scan pattern: {}\n".format(model, tty, return_mode, scan_pattern)
 
     # Customize the lidar config files as per user choices
     lidar_params = {"model": model,
@@ -247,60 +237,53 @@ def start_slam(set_progress, # This must be the first argument
     dir_path = os.path.dirname(os.path.realpath(__file__))
     slam_script_path = os.path.join(dir_path, "scripts/slam-ros2/fast_lio_slam/start_docker_slam_avia.sh")
     mavros_script_path = os.path.join(dir_path, "scripts/slam-ros2/fast_lio_slam/start_mavros.sh")
-    # ptp_script_path = os.path.join(dir_path, "scripts/slam-ros2/fast_lio_slam/start_ptp.sh")
     start_slam_cmd = "bash " + slam_script_path
     start_mavros_cmd = "bash " + mavros_script_path
-    # start_ptp_cmd = "bash " + ptp_script_path
 
     # Start the needed processes
     slam_subprocess = subprocess.Popen(start_slam_cmd, stdout=subprocess.PIPE, shell=True)
     mavros_subprocess = subprocess.Popen(start_mavros_cmd + " " + tty + " " + str(baud) , stdout=subprocess.PIPE, shell=True)
-    # ptp_subprocess = subprocess.Popen(start_ptp_cmd, stdout=subprocess.PIPE, shell=True)
     os.set_blocking(slam_subprocess.stdout.fileno(), False)
     os.set_blocking(mavros_subprocess.stdout.fileno(), False)
-    # os.set_blocking(ptp_subprocess.stdout.fileno(), False)
     time.sleep(2) # Wait for the processes to start!!
-
-    global slam_pid, mavros_pid, ptp_pid
-
-    # ptp_pid = ptp_subprocess.pid
-    # ptp_parent = psutil.Process(ptp_pid)
-
-    # global slam_children
-    # ptp_children = ptp_parent.children(recursive=True)
-    # ptp_children_pid = []
-    # for pid in ptp_children:
-    #     ptp_children_pid.append(pid.pid)
-    # mavros_pid = mavros_subprocess.pid
-    # ptp_pid = ptp_subprocess.pid
-
 
     slam_line = ""
     mavros_line = ""
-    ptp_line = ""
-    log_time = time.time_ns()
+    
+    log_time = time.time()
     while True:
-        elapsed = f'{(time.time_ns() - log_time) / 10**9:.2f}'
+        elapsed = f'{(time.time() - log_time):.0f}'
+        status_msg = "The following configuration was selected:\n -> lidar model: {}\n  -> tty: {}\n  -> return mode: {}\n  -> scan pattern: {}\n" \
+            "\n==== SLAM is running ====\n\n==== Elapsed time: {} s ====\n".format(model, tty, return_mode, scan_pattern, elapsed)
         #
         slam_line = slam_subprocess.stdout.readline().decode() + slam_line
         #
         mavros_line = mavros_subprocess.stdout.readline().decode() + mavros_line
-        #
-        # ptp_line = ptp_subprocess.stdout.readline().decode() + ptp_line
         
         set_progress((mavros_line, slam_line, status_msg))
+        time.sleep(0.2)
 
 
 @callback(
-    Output(component_id='dummy-div', component_property='children'),
+    # Output(component_id='dummy-div', component_property='children'),
+    Output("status-terminal", "value"),
+    Output("slam-starter-div", "hidden"),
+    Output("slam-stopper-div", "hidden"),
+    Output(component_id="slam-stopping-div", component_property="hidden"),
     Input(component_id='slam-stopper', component_property='submit_n_clicks'),
-    prevent_initial_call=True
+    background=True,
+    manager=background_callback_manager,
+    prevent_initial_call=True,
+    progress=[Output("status-terminal", "value"),
+              Output("slam-starter-div", "hidden"),
+              Output("slam-stopper-div", "hidden"),
+              Output(component_id="slam-stopping-div", component_property="hidden")]
 )
-def stop_slam(submit_n_clicks):
-    subprocess.run("docker container stop fast-lio-slam", shell=True, stdout=subprocess.DEVNULL)
+def stop_slam(set_progress, submit_n_clicks):
+    set_progress(("==== Shutting down SLAM process, please wait... ====", True, True, False))
+    subprocess.run("docker kill --signal SIGINT fast-lio-slam", shell=True, stdout=subprocess.DEVNULL)
     subprocess.run("docker container stop mavros", shell=True, stdout=subprocess.DEVNULL)
-    # TODO: kill ptp process!! os.kill(ptp_pid, signal.SIGKILL)
-    # subprocess.run()
+    return "==== SLAM process gracefully shut down! ====", False, True, True
 
 # Run the app
 if __name__ == '__main__':
