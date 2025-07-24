@@ -122,6 +122,13 @@ app.layout = [
                                 Status
                                 '''),
                     dcc.Textarea(id="status-terminal", readOnly=True, style={'width': '100%', 'height': 300})
+                ]),
+                html.Br(),
+                html.Div(className="row", style={"padding": "10px"}, children=[
+                    dcc.Markdown(''' 
+                                Debug
+                                '''),
+                    dcc.Checklist(['External monitor connected'], id="debug-checklist")
                 ])
             ]),
         ]),
@@ -204,6 +211,7 @@ def select_lidar_model(model):
     State('tty-dropdown', 'value'),
     State('baud-dropdown', 'value'),
     State('lidar-model-dropdown', 'value'),
+    State('debug-checklist', 'value'),
     background=True,
     running=[
         (Output("slam-starter-div", "hidden"), True, True),
@@ -223,7 +231,8 @@ def start_slam(set_progress, # This must be the first argument
             scan_pattern: str,
             tty: str,
             baud: int,
-            model: str):
+            model: str,
+            ext_monitor: list):
     # User clicked "start SLAM"
 
     # Customize the lidar config files as per user choices
@@ -239,6 +248,10 @@ def start_slam(set_progress, # This must be the first argument
     mavros_script_path = os.path.join(dir_path, "scripts/slam-ros2/fast_lio_slam/start_mavros.sh")
     start_slam_cmd = "bash " + slam_script_path
     start_mavros_cmd = "bash " + mavros_script_path
+
+    # Add arguments to commands
+    if ext_monitor and ext_monitor[0] == 'External monitor connected':
+        start_slam_cmd = start_slam_cmd + " --external-monitor=yes"
 
     # Start the needed processes
     slam_subprocess = subprocess.Popen(start_slam_cmd, stdout=subprocess.PIPE, shell=True)
