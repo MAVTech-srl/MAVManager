@@ -128,7 +128,9 @@ app.layout = [
                     dcc.Markdown(''' 
                                 Debug
                                 '''),
-                    dcc.Checklist(['External monitor connected'], id="debug-checklist")
+                    dcc.Checklist(['External monitor connected'], id="debug-checklist"),
+                    html.Br(),
+                    html.Button(className='button', children=['Kill old slam session'], id='kill-old-session')
                 ])
             ]),
         ]),
@@ -234,7 +236,8 @@ def start_slam(set_progress, # This must be the first argument
             model: str,
             ext_monitor: list):
     # User clicked "start SLAM"
-
+    init_msg = '==== SLAM is starting... ====\n\n'
+    set_progress(('', '', init_msg))
     # Customize the lidar config files as per user choices
     lidar_params = {"model": model,
                     "scan_pattern": scan_pattern,
@@ -266,7 +269,7 @@ def start_slam(set_progress, # This must be the first argument
     log_time = time.time()
     while True:
         elapsed = f'{(time.time() - log_time):.0f}'
-        status_msg = "The following configuration was selected:\n -> lidar model: {}\n  -> tty: {}\n  -> return mode: {}\n  -> scan pattern: {}\n" \
+        status_msg = init_msg + "The following configuration was selected:\n  -> lidar model: {}\n  -> tty: {}\n  -> return mode: {}\n  -> scan pattern: {}\n" \
             "\n==== SLAM is running ====\n\n==== Elapsed time: {} s ====\n".format(model, tty, return_mode, scan_pattern, elapsed)
         #
         slam_line = slam_subprocess.stdout.readline().decode() + slam_line
@@ -274,7 +277,7 @@ def start_slam(set_progress, # This must be the first argument
         mavros_line = mavros_subprocess.stdout.readline().decode() + mavros_line
         
         set_progress((mavros_line, slam_line, status_msg))
-        time.sleep(0.2)
+        # time.sleep(0.2)
 
 
 @callback(
@@ -284,6 +287,7 @@ def start_slam(set_progress, # This must be the first argument
     Output("slam-stopper-div", "hidden"),
     Output(component_id="slam-stopping-div", component_property="hidden"),
     Input(component_id='slam-stopper', component_property='submit_n_clicks'),
+    Input('kill-old-session', 'n_clicks'),
     background=True,
     manager=background_callback_manager,
     prevent_initial_call=True,
@@ -292,7 +296,7 @@ def start_slam(set_progress, # This must be the first argument
               Output("slam-stopper-div", "hidden"),
               Output(component_id="slam-stopping-div", component_property="hidden")]
 )
-def stop_slam(set_progress, submit_n_clicks):
+def stop_slam(set_progress, submit_n_clicks, n_clicks):
     set_progress(("==== Shutting down SLAM process, please wait... ====", True, True, False))
     subprocess.run("docker kill --signal SIGINT fast-lio-slam", shell=True, stdout=subprocess.DEVNULL)
     subprocess.run("docker container stop mavros", shell=True, stdout=subprocess.DEVNULL)
