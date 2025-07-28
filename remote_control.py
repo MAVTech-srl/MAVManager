@@ -247,7 +247,13 @@ def start_slam(set_progress, # This must be the first argument
 
     # Retrieve bash scripts
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    slam_script_path = os.path.join(dir_path, "scripts/slam-ros2/fast_lio_slam/start_docker_slam_avia.sh")
+    
+    if model == "AVIA":
+        device = "avia"
+    elif model == "MID360":
+        device = "mid360"
+
+    slam_script_path = os.path.join(dir_path, "scripts/slam-ros2/fast_lio_slam/start_docker_slam_"+ device +".sh")
     mavros_script_path = os.path.join(dir_path, "scripts/slam-ros2/fast_lio_slam/start_mavros.sh")
     start_slam_cmd = "bash " + slam_script_path
     start_mavros_cmd = "bash " + mavros_script_path
