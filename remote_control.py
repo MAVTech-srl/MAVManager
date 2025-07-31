@@ -129,6 +129,9 @@ app.layout = [
                                 Debug
                                 '''),
                     dcc.Checklist(['External monitor connected'], id="debug-checklist"),
+                    dcc.Checklist(['Save local point cloud'], id="debug-checklist"),
+                    dcc.Checklist(['Save UTM (zone 32) point cloud'], id="debug-checklist"),
+
                     html.Br(),
                     html.Button(className='button', children=['Kill old slam session'], id='kill-old-session')
                 ])
@@ -234,7 +237,9 @@ def start_slam(set_progress, # This must be the first argument
             tty: str,
             baud: int,
             model: str,
-            ext_monitor: list):
+            ext_monitor: list,
+            save_local: list,
+            save_utm: list):
     # User clicked "start SLAM"
     init_msg = '==== SLAM is starting... ====\n\n'
     set_progress(('', '', init_msg))
@@ -261,6 +266,12 @@ def start_slam(set_progress, # This must be the first argument
     # Add arguments to commands
     if ext_monitor and ext_monitor[0] == 'External monitor connected':
         start_slam_cmd = start_slam_cmd + " --external-monitor=yes"
+
+    if save_local and save_local[0] == 'Save local point cloud':
+        start_slam_cmd = start_slam_cmd + " --save-pcd-cloud=yes"  
+
+    if save_utm and save_utm[0] == 'Save UTM (zone 32) point cloud':
+        start_slam_cmd = start_slam_cmd + " --save-UTM-pcd-cloud=yes"  
 
     # Start the needed processes
     slam_subprocess = subprocess.Popen(start_slam_cmd, stdout=subprocess.PIPE, shell=True)
