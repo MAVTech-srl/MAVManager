@@ -1,6 +1,6 @@
 # Import packages
-from ast import mod
-from curses import baudrate
+# from ast import mod
+# from curses import baudrate
 from dash import Dash, html, dash_table, dcc, callback, Output, Input, State, DiskcacheManager, set_props
 import dash_daq as daq
 import plotly.express as px
@@ -11,6 +11,7 @@ import os
 import signal
 import psutil
 import json
+import zipfile
 
 # Initialize the app
 external_stylesheets = ['/home/davide/Documents/open3d_devel/dash_assets/style.css']
@@ -58,6 +59,11 @@ subproc = subprocess.run(bash_command, shell=True, check=True, executable='/bin/
 subproc_stdout = str(subproc.stdout.decode()).split()
 
 baudrate_list = [57600, 115200, 921600]
+
+# File browser
+save_file_path = os.path.join(os.environ['HOME'], 'Desktop/rosbag')
+files = [f for f in os.listdir(save_file_path) if os.path.isfile(os.path.join(save_file_path, f))]
+
 # App layout
 app.layout = [
     build_banner(),
@@ -128,9 +134,10 @@ app.layout = [
                     dcc.Markdown(''' 
                                 Debug
                                 '''),
-                    dcc.Checklist(['External monitor connected'], id="debug-checklist"),
-                    dcc.Checklist(['Save local point cloud'], id="debug-checklist"),
-                    dcc.Checklist(['Save UTM (zone 32) point cloud'], id="debug-checklist"),
+                    dcc.Checklist(['External monitor connected'], id="monitor-checklist"),
+                    dcc.Checklist(['Save local point cloud'], id="pcd-checklist"),
+                    dcc.Checklist(['Save UTM (zone 32) point cloud'], id="utm-pcd-checklist", value=['Save UTM (zone 32) point cloud']),
+                    dcc.Checklist(['Convert livox custom cloud to ROS cloud'], id="convert-checklist"),
 
                     html.Br(),
                     html.Button(className='button', children=['Kill old slam session'], id='kill-old-session')
@@ -154,6 +161,24 @@ app.layout = [
                     html.Div(id="mavros-pid")
                 ]),
             ]),
+        ]),
+        dcc.Tab(label='File download', children=[
+            html.Div(className="six columns", children=[
+                html.Br(),
+                html.Div(className="row", style={"padding": "10px"}, children=[
+                    # dcc.Markdown("SLAM logs"),
+                    html.H2("File browser"),
+                    # dcc.Dropdown(
+                    #     id="dropdown",
+                    #     options=[{"label": x, "value": x} for x in files],
+                    #     value=files[0],
+                    #     )
+                    html.Button(className='button', id='download-button', children=['Download selected files'], style={'color': 'white', 'background': 'blue'}),
+                    dcc.Download(id='download'),
+                    html.Br(),
+                    dcc.Checklist([{"label": x, "value": x} for x in files], id='file-checklist')
+                ]),
+            ])
         ])
     ])
 
@@ -206,6 +231,28 @@ def select_lidar_model(model):
         return False, False
     else:
         return True, True
+    
+# DOWNLOAD FILES callback
+@callback(
+        Output("download", "data"),
+        Input("download-button", "n_clicks"),
+        State("file-checklist", 'value'),
+        prevent_initial_call=True
+)
+def download_files(n_clicks, file_list):
+    file_paths = []
+    for name in file_list:
+        file_paths.append(os.path.join(save_file_path, name))
+    zf = zipfile.ZipFile(os.path.join(save_file_path, "clouds.zip"), mode="w")
+    try:
+        for name in file_list:
+            zf.write(os.path.join(save_file_path, name), name)
+
+    except FileNotFoundError:
+        print("An error occurred")
+    finally:
+        zf.close()
+    return dcc.send_file(os.path.join(save_file_path, "clouds.zip"))
 
 # START SLAM callback
 @callback(
@@ -216,7 +263,10 @@ def select_lidar_model(model):
     State('tty-dropdown', 'value'),
     State('baud-dropdown', 'value'),
     State('lidar-model-dropdown', 'value'),
-    State('debug-checklist', 'value'),
+    State('monitor-checklist', 'value'),
+    State('pcd-checklist', 'value'),
+    State('utm-pcd-checklist', 'value'),
+    State('convert-checklist', 'value'),
     background=True,
     running=[
         (Output("slam-starter-div", "hidden"), True, True),
@@ -239,7 +289,8 @@ def start_slam(set_progress, # This must be the first argument
             model: str,
             ext_monitor: list,
             save_local: list,
-            save_utm: list):
+            save_utm: list,
+            convert_pc: list):
     # User clicked "start SLAM"
     init_msg = '==== SLAM is starting... ====\n\n'
     set_progress(('', '', init_msg))
@@ -271,7 +322,12 @@ def start_slam(set_progress, # This must be the first argument
         start_slam_cmd = start_slam_cmd + " --save-pcd-cloud=yes"  
 
     if save_utm and save_utm[0] == 'Save UTM (zone 32) point cloud':
-        start_slam_cmd = start_slam_cmd + " --save-UTM-pcd-cloud=yes"  
+        start_slam_cmd = start_slam_cmd + " --save-utm-pcd-cloud=yes"
+    else:       # Default is yes, so I need to switch it to off if user un-ticks the checkbox
+        start_slam_cmd = start_slam_cmd + " --save-utm-pcd-cloud=no"
+    
+    if convert_pc and convert_pc[0] == 'Convert livox custom cloud to ROS cloud':
+        start_slam_cmd = start_slam_cmd + " --convert-livox-cloud=yes"
 
     # Start the needed processes
     slam_subprocess = subprocess.Popen(start_slam_cmd, stdout=subprocess.PIPE, shell=True)
@@ -287,7 +343,11 @@ def start_slam(set_progress, # This must be the first argument
     while True:
         elapsed = f'{(time.time() - log_time):.0f}'
         status_msg = init_msg + "The following configuration was selected:\n  -> lidar model: {}\n  -> tty: {}\n  -> return mode: {}\n  -> scan pattern: {}\n" \
-            "\n==== SLAM is running ====\n\n==== Elapsed time: {} s ====\n".format(model, tty, return_mode, scan_pattern, elapsed)
+            "\n==== SLAM is running ====\n\n==== Elapsed time: {} s ====\n".format(model, 
+                                                                                   tty, 
+                                                                                   return_mode if model=='avia' else None, 
+                                                                                   scan_pattern if model=='avia' else None, 
+                                                                                   elapsed)
         #
         slam_line = slam_subprocess.stdout.readline().decode() + slam_line
         #
