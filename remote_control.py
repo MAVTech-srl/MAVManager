@@ -63,6 +63,7 @@ baudrate_list = [57600, 115200, 921600]
 # File browser
 save_file_path = os.path.join(os.environ['HOME'], 'Desktop/rosbag')
 files = [f for f in os.listdir(save_file_path) if os.path.isfile(os.path.join(save_file_path, f))]
+file_browser_status = ""        # History of file browser operations
 
 # App layout
 app.layout = [
@@ -162,21 +163,48 @@ app.layout = [
                 ]),
             ]),
         ]),
-        dcc.Tab(label='File download', children=[
+        dcc.Tab(label='File browser', children=[
             html.Div(className="six columns", children=[
                 html.Br(),
                 html.Div(className="row", style={"padding": "10px"}, children=[
-                    # dcc.Markdown("SLAM logs"),
-                    html.H2("File browser"),
+                    html.Div(children=[html.H2("File browser")], style={"padding": "10px"}),
                     # dcc.Dropdown(
                     #     id="dropdown",
                     #     options=[{"label": x, "value": x} for x in files],
                     #     value=files[0],
                     #     )
-                    html.Button(className='button', id='download-button', children=['Download selected files'], style={'color': 'white', 'background': 'blue'}),
-                    dcc.Download(id='download'),
+                    html.Div(className="row", id="file-buttons", style={"padding": "10px"},  children=[
+                        html.Div(className="two columns", id='file-refresh-div', style={"padding": "10px"},  children=[
+                            html.Button(className='button', id='refresh-button', children=['Refresh'], style={'color': 'white', 'background': 'green'}),
+                        ]),
+                        html.Div(className="four columns", id='file-download-div', style={"padding": "10px"},  children=[
+                            html.Button(className='button', id='download-button', children=['Download selected files'], style={'color': 'white', 'background': 'blue'}),
+                            dcc.Download(id='download'),
+                        ]),
+                        html.Div(className="four columns", id='file-delete-div', style={"padding": "10px"},  children=[
+                            dcc.ConfirmDialogProvider(
+                                html.Button(className='button', id='delete-button', children=['Delete selected files'], style={'color': 'white', 'background': 'orange'}),
+                                id='delete-button-dialog',
+                                message='Do you want to delete these files?'
+                            ),
+                        ]),
+                    ]),
                     html.Br(),
-                    dcc.Checklist([{"label": x, "value": x} for x in files], id='file-checklist')
+                    html.Div(className="row", id="file-selector", style={"padding": "10px"},  children=[
+                        # dcc.Checklist([{"label": x, "value": x} for x in files], id='file-checklist')
+                        dcc.Checklist([{"label": html.Div([
+                            html.Span(x, style={'width': '500px', 'display': 'inline-block', 'flexShrink': '0', 'whiteSpace': 'nowrap'}, id='file-name'),
+                            html.Span("{:.2f}MB".format(os.stat(os.path.join(save_file_path, x)).st_size / 10**6), id='file-size')
+                        ], style={'display': 'inline-flex', 'alignItems': 'center'}),
+                        "value": x} for x in files], id='file-checklist', inputStyle={"marginRight": "8px"})
+                    ]),
+                ]),
+            ]),
+            html.Div(className="six columns", style={"padding": "10px"}, children=[
+                html.Div(className="row", style={"padding": "10px"}, children=[
+                    dcc.Markdown("File browser output"),
+                    dcc.Textarea(id="file-browser-terminal", readOnly=True, style={'width': '100%', 
+                                                                            'height': 200}),
                 ]),
             ])
         ])
@@ -243,7 +271,7 @@ def download_files(n_clicks, file_list):
     file_paths = []
     for name in file_list:
         file_paths.append(os.path.join(save_file_path, name))
-    zf = zipfile.ZipFile(os.path.join(save_file_path, "clouds.zip"), mode="w")
+    zf = zipfile.ZipFile("/tmp/clouds.zip", mode="w")
     try:
         for name in file_list:
             zf.write(os.path.join(save_file_path, name), name)
@@ -252,7 +280,51 @@ def download_files(n_clicks, file_list):
         print("An error occurred")
     finally:
         zf.close()
-    return dcc.send_file(os.path.join(save_file_path, "clouds.zip"))
+    return dcc.send_file("/tmp/clouds.zip")
+
+# CANCEL FILES callback
+@callback(
+        Output('file-selector', 'children', allow_duplicate=True),
+        Output('file-browser-terminal', 'value'),
+        Input('delete-button-dialog', 'submit_n_clicks'),
+        State("file-checklist", 'value'),
+        prevent_initial_call=True,
+)
+def delete_files(n_clicks, file_list: list):
+    # Check the size of selected files to delete and then delete it
+    freed_space = 0
+    for file in file_list:
+        freed_space = freed_space + os.stat(os.path.join(save_file_path, file)).st_size
+        os.remove(os.path.join(save_file_path, file))
+    # Update file list
+    updated_files = [f for f in os.listdir(save_file_path) if os.path.isfile(os.path.join(save_file_path, f))]
+    # Update the terminal output
+    global file_browser_status
+    file_browser_status = file_browser_status + "Deleted {} files ({:.2f}MB freed).".format(len(file_list), freed_space / 10**6) + "\n"
+    # return updated_files, file_browser_status
+    return dcc.Checklist([{"label": html.Div([
+                            html.Span(x, style={'width': '500px', 'display': 'inline-block', 'flexShrink': '0', 'whiteSpace': 'nowrap'}, id='file-name'),
+                            html.Span("{:.2f}MB".format(os.stat(os.path.join(save_file_path, x)).st_size / 10**6), id='file-size')
+                        ], style={'display': 'inline-flex', 'alignItems': 'center'}),
+                        "value": x} for x in updated_files], id='file-checklist', inputStyle={"marginRight": "8px"}), file_browser_status
+
+# REFRESH FILES callback
+@callback(
+        # Output('file-checklist', 'options', allow_duplicate=True),
+        Output('file-selector', 'children'),
+        Input('refresh-button', 'n_clicks'),
+        prevent_initial_call=True
+)
+def refresh_files(n_clicks):
+    # Refresh file list
+    updated_files = [f for f in os.listdir(save_file_path) if os.path.isfile(os.path.join(save_file_path, f))]
+    # return updated_files
+    return dcc.Checklist([{"label": html.Div([
+                                html.Span(x, style={'width': '500px', 'display': 'inline-block', 'flexShrink': '0', 'whiteSpace': 'nowrap'}),
+                                html.Span("{:.2f}MB".format(os.stat(os.path.join(save_file_path, x)).st_size / 10**6))
+                            ], style={'display': 'inline-flex', 'alignItems': 'center'}),
+                            "value": x} for x in updated_files], id='file-checklist', inputStyle={"marginRight": "8px"})
+
 
 # START SLAM callback
 @callback(
