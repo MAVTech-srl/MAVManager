@@ -12,6 +12,7 @@ import signal
 import psutil
 import json
 import zipfile
+import yaml
 
 # Initialize the app
 external_stylesheets = ['/home/davide/Documents/open3d_devel/dash_assets/style.css']
@@ -133,13 +134,16 @@ app.layout = [
                 html.Br(),
                 html.Div(className="row", style={"padding": "10px"}, children=[
                     dcc.Markdown(''' 
-                                Debug
+                                ### Debug
                                 '''),
                     dcc.Checklist(['External monitor connected'], id="monitor-checklist"),
-                    dcc.Checklist(['Save local point cloud'], id="pcd-checklist"),
-                    dcc.Checklist(['Save UTM (zone 32) point cloud'], id="utm-pcd-checklist", value=['Save UTM (zone 32) point cloud']),
+                    dcc.Checklist(['Save local point cloud'], id="pcd-checklist", value=['Save local point cloud']),
+                    dcc.Checklist(['Save UTM (zone 32) point cloud'], id="utm-pcd-checklist"),
                     dcc.Checklist(['Convert livox custom cloud to ROS cloud'], id="convert-checklist"),
-
+                    dcc.Checklist(['Use the position covariance matrix from PX4 ekf2'], id="use-px4-cov-checklist"),
+                    html.Span(children=[
+                        dcc.Input(id="input_cov_{}".format(_), type="text", value="0.1") for _ in ["x", "y", "z"]
+                    ]),
                     html.Br(),
                     html.Button(className='button', children=['Kill old slam session'], id='kill-old-session')
                 ])
@@ -243,6 +247,22 @@ def update_lidar_config(params: dict):
         with open(path, 'w') as f:
             json.dump(data, f, indent=2)
 
+def update_slam_config(params: dict):
+    # Avia
+    if params["model"] == 'AVIA':
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        path = os.path.join(dir_path, "scripts/slam-ros2/fast_lio_slam/config/avia.yaml") 
+        with open(path, 'r') as f:
+            slam_parameters = yaml.safe_load(f)
+            slam_parameters['/**']['ros__parameters']['mapping']['use_ekf2_covariance'] = params['use_px4_ekf2']
+            slam_parameters['/**']['ros__parameters']['mapping']['measurement_noise_covariance_x'] = params['cov_matrix'][0]
+            slam_parameters['/**']['ros__parameters']['mapping']['measurement_noise_covariance_y'] = params['cov_matrix'][1]
+            slam_parameters['/**']['ros__parameters']['mapping']['measurement_noise_covariance_z'] = params['cov_matrix'][2]
+
+        with open(path, 'w') as f:
+            yaml.safe_dump(slam_parameters, f, sort_keys=False, default_flow_style=False)
+
+
 
 ###############################################################
 ########################## CALLBACKS ##########################
@@ -339,6 +359,8 @@ def refresh_files(n_clicks):
     State('pcd-checklist', 'value'),
     State('utm-pcd-checklist', 'value'),
     State('convert-checklist', 'value'),
+    State('use-px4-cov-checklist', 'value'),
+    [State("input_cov_{}".format(_), 'value') for _ in ['x', 'y', 'z']],
     background=True,
     running=[
         (Output("slam-starter-div", "hidden"), True, True),
@@ -362,8 +384,16 @@ def start_slam(set_progress, # This must be the first argument
             ext_monitor: list,
             save_local: list,
             save_utm: list,
-            convert_pc: list):
+            convert_pc: list,
+            use_ekf2_cov: list,
+            *covariance: float):
     # User clicked "start SLAM"
+    # Check if all the fields were correctly filled
+    if tty == None or baud == None or model == None:
+        not_inited_msg = '==== CHECK THE CONFIGURATION: ONE OR MORE FIELDS WERE LEFT EMPTY! ====\nAborted.'
+        set_progress(('', '', not_inited_msg))
+        return
+    
     init_msg = '==== SLAM is starting... ====\n\n'
     set_progress(('', '', init_msg))
     # Customize the lidar config files as per user choices
@@ -372,6 +402,15 @@ def start_slam(set_progress, # This must be the first argument
                     "return_mode": return_mode
                     }
     update_lidar_config(lidar_params)
+    if use_ekf2_cov and use_ekf2_cov[0] == 'Use the position covariance matrix from PX4 ekf2':
+        cov_matrix = []
+        [cov_matrix.append(float(cov)) for cov in covariance if cov]
+        slam_params = {
+            'model': model,
+            'cov_matrix': cov_matrix,
+            'use_px4_ekf2': True
+        }
+        update_slam_config(slam_params)
 
     # Retrieve bash scripts
     dir_path = os.path.dirname(os.path.realpath(__file__))
