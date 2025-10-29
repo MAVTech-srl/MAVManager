@@ -1,7 +1,7 @@
 # Import packages
 # from ast import mod
 # from curses import baudrate
-from dash import Dash, html, dash_table, dcc, callback, Output, Input, State, DiskcacheManager, set_props
+from dash import Dash, html, dash_table, dcc, callback, Output, Input, State, DiskcacheManager, set_props, ctx
 import dash_daq as daq
 import plotly.express as px
 import subprocess
@@ -120,7 +120,7 @@ app.layout = [
                 html.Div(className="two columns", hidden=True, id='slam-stopping-div', style={"padding": "10px"},  children=[
                         html.Button(className='button', children=['Stopping SLAM...'], style={'color': 'black', 'background': 'orange'}, disabled=True)
                 ]),
-                html.Div(id='button-div'),
+                html.Div(id='slam-aborted-div'),
                 html.Div(id="dummy-div")
             ]),
             html.Div(className="six columns", children=[
@@ -141,9 +141,13 @@ app.layout = [
                     dcc.Checklist(['Save UTM (zone 32) point cloud'], id="utm-pcd-checklist"),
                     dcc.Checklist(['Convert livox custom cloud to ROS cloud'], id="convert-checklist"),
                     dcc.Checklist(['Use the position covariance matrix from PX4 ekf2'], id="use-px4-cov-checklist"),
+                    html.Div(className='row', id='tune-ekf-text', children=[
+                        dcc.Markdown('Manually tune the noise covariance matrix R entries for x, y and z position:')
+                    ]),
                     html.Span(children=[
                         dcc.Input(id="input_cov_{}".format(_), type="text", value="0.1") for _ in ["x", "y", "z"]
-                    ]),
+                    ], id='tune-ekf-span'),
+                    html.Br(),
                     html.Br(),
                     html.Button(className='button', children=['Kill old slam session'], id='kill-old-session')
                 ])
@@ -268,6 +272,11 @@ def update_slam_config(params: dict):
 ########################## CALLBACKS ##########################
 ###############################################################
 
+# =============================================================
+# =====================| GENERAL PURPOSE |=====================
+# =============================================================
+
+
 # Select if AVIA or MID360
 @callback(Output(component_id='return-mode-selector', component_property='hidden'),
           Output(component_id='scan-pattern-selector', component_property='hidden'),
@@ -279,7 +288,24 @@ def select_lidar_model(model):
         return False, False
     else:
         return True, True
-    
+
+@callback(
+        Output('tune-ekf-text', 'hidden'),
+        Output('tune-ekf-span', 'hidden'),
+        Input(component_id='use-px4-cov-checklist', component_property='value'),
+        prevent_initial_call=True
+)
+def toggle_tune_slam_ekf(chklst_value):
+    if chklst_value and chklst_value[0] == 'Use the position covariance matrix from PX4 ekf2':
+        return True, True
+    else:
+        return False, False
+
+
+# =============================================================
+# ======================| FILE BROWSER |=======================
+# =============================================================
+
 # DOWNLOAD FILES callback
 @callback(
         Output("download", "data"),
@@ -345,10 +371,13 @@ def refresh_files(n_clicks):
                             ], style={'display': 'inline-flex', 'alignItems': 'center'}),
                             "value": x} for x in updated_files], id='file-checklist', inputStyle={"marginRight": "8px"})
 
+# =============================================================
+# ======================| SLAM RELATED |=======================
+# =============================================================
 
 # START SLAM callback
 @callback(
-    Output(component_id='button-div', component_property='children'),
+    Output(component_id='slam-aborted-div', component_property='children'),
     Input(component_id='slam-starter', component_property='submit_n_clicks'),
     State('return-mode-dropdown', 'value'),
     State('scan-pattern-dropdown', 'value'),
@@ -390,9 +419,7 @@ def start_slam(set_progress, # This must be the first argument
     # User clicked "start SLAM"
     # Check if all the fields were correctly filled
     if tty == None or baud == None or model == None:
-        not_inited_msg = '==== CHECK THE CONFIGURATION: ONE OR MORE FIELDS WERE LEFT EMPTY! ====\nAborted.'
-        set_progress(('', '', not_inited_msg))
-        return
+        return submit_n_clicks
     
     init_msg = '==== SLAM is starting... ====\n\n'
     set_progress(('', '', init_msg))
@@ -476,6 +503,7 @@ def start_slam(set_progress, # This must be the first argument
     Output(component_id="slam-stopping-div", component_property="hidden"),
     Input(component_id='slam-stopper', component_property='submit_n_clicks'),
     Input('kill-old-session', 'n_clicks'),
+    Input('slam-aborted-div', 'children'),
     background=True,
     manager=background_callback_manager,
     prevent_initial_call=True,
@@ -484,7 +512,12 @@ def start_slam(set_progress, # This must be the first argument
               Output("slam-stopper-div", "hidden"),
               Output(component_id="slam-stopping-div", component_property="hidden")]
 )
-def stop_slam(set_progress, submit_n_clicks, n_clicks):
+def stop_slam(set_progress, submit_n_clicks, n_clicks, slam_aborted):
+    reason = ctx.triggered_id
+    if reason == 'slam-aborted-div':
+        # If user forgot to set some fields in the gui notice him and abort slam launch
+        return '==== ERROR WHEN STARTING SLAM: PROCESS ABORTED ====\nCHECK THE CONFIGURATION: ONE OR MORE FIELDS WERE LEFT EMPTY!', False, True, True
+    
     set_progress(("==== Shutting down SLAM process, please wait... ====", True, True, False))
     subprocess.run("docker kill --signal SIGINT fast-lio-slam", shell=True, stdout=subprocess.DEVNULL)
     subprocess.run("docker container stop mavros", shell=True, stdout=subprocess.DEVNULL)
