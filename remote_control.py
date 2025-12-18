@@ -26,6 +26,19 @@ cache = diskcache.Cache("./cache")
 background_callback_manager = DiskcacheManager(cache)
 
 '''
+    Check which platform I'm running on
+'''
+def get_platform() -> str:
+    bash_command = "cat /proc/cpuinfo | grep 'Model' | awk '{print $3}'" # Check if it's a Raspberry
+    subproc = subprocess.run(bash_command, shell=True, check=True, executable='/bin/bash', stdout=subprocess.PIPE)
+    subproc_stdout = str(subproc.stdout.decode()).split()
+    if not subproc_stdout:
+        if os.path.isfile('/etc/nv_tegra_release'):
+            return 'jetson'
+    else: 
+        return 'raspberry'
+
+'''
 Build top banner
 '''
 def build_banner():
@@ -55,7 +68,18 @@ def build_banner():
         # html.Div(className="flex-item")
     ])
 
+'''
+    Find all tags of a local Docker image
+'''
+def find_local_tags(container_name: str) -> list:
+    bash_command = "docker images --format {{.Tag}} " + container_name
+    subproc = subprocess.run(bash_command, shell=True, check=True, executable='/bin/bash', stdout=subprocess.PIPE)
+    subproc_stdout = str(subproc.stdout.decode()).split()
+    return subproc_stdout
 
+
+# Retrieve platform
+platform = get_platform()
 # Check the tty device names
 bash_command = "ls -v /dev/ | awk '/^(tty[A-Za-z])/'" # List all files that begin with tty + letter
 subproc = subprocess.run(bash_command, shell=True, check=True, executable='/bin/bash', stdout=subprocess.PIPE)
@@ -67,6 +91,18 @@ baudrate_list = [57600, 115200, 921600]
 save_file_path = os.path.join(os.environ['HOME'], 'Desktop/rosbag')
 files = [f for f in os.listdir(save_file_path) if os.path.isfile(os.path.join(save_file_path, f))]
 file_browser_status = ""        # History of file browser operations
+
+# Retrieve list of tags for fast-lio containers
+tags_slam = find_local_tags('ghcr.io/mavtech-srl/fast-lio-slam')
+# Filter out tags not compatible with the current platform
+rasp_tags_slam = []
+jetson_tags_slam = []
+for tag in tags_slam:
+    if 'rasp' in tag:
+        rasp_tags_slam.append(tag)
+        continue
+    jetson_tags_slam.append(tag)
+    
 
 # App layout
 app.layout = [
@@ -136,12 +172,18 @@ app.layout = [
                 html.Br(),
                 html.Div(className="row", style={"padding": "10px"}, children=[
                     dcc.Markdown(''' 
-                                ### Debug
+                                ### Advanced
                                 '''),
                     dcc.Checklist(['External monitor connected'], id="monitor-checklist"),
                     dcc.Checklist(['Save local point cloud'], id="pcd-checklist", value=['Save local point cloud']),
                     dcc.Checklist(['Save UTM (zone 32) point cloud'], id="utm-pcd-checklist"),
                     dcc.Checklist(['Convert livox custom cloud to ROS cloud'], id="convert-checklist"),
+                    dcc.Checklist(['Specify fast-lio container tag'], id="tags-checklist"),
+                    html.Div(className="row", hidden=True, id="tags-selector", style={"padding": "10px"},  children=[
+                        # html.Br(),
+                        # dcc.Markdown('''Select LiDAR scan pattern'''),
+                        dcc.Dropdown((jetson_tags_slam if platform == 'jetson' else rasp_tags_slam), id='tags-dropdown', placeholder='Select specific tag...'),
+                    ]),
                     # dcc.Checklist(['Use the position covariance matrix from PX4 ekf2'], id="use-px4-cov-checklist"),
                     # html.Div(className='row', id='tune-ekf-text', children=[
                     #     dcc.Markdown('Manually tune the noise covariance matrix R entries for x, y and z position:')
@@ -390,6 +432,15 @@ def select_lidar_model(model):
         return False, False
     else:
         return True, True
+    
+# Enable tag selection for SLAM container
+@callback(Output('tags-selector', 'hidden'),
+          Input('tags-checklist', 'value'))
+def enable_tag_selection(value):
+    if value is None or not value:
+        return True
+    else:
+        return False
 
 # @callback(
 #         Output('tune-ekf-text', 'hidden'),
@@ -561,6 +612,8 @@ def refresh_files(n_clicks):
     State('pcd-checklist', 'value'),
     State('utm-pcd-checklist', 'value'),
     State('convert-checklist', 'value'),
+    State('tags-dropdown', 'value'),
+    State('tags-selector', 'hidden'),
     # State('use-px4-cov-checklist', 'value'),
     # [State("input_cov_{}".format(_), 'value') for _ in ['x', 'y', 'z']],
     background=True,
@@ -587,6 +640,8 @@ def start_slam(set_progress, # This must be the first argument
             save_local: list,
             save_utm: list,
             convert_pc: list,
+            tag: str,
+            is_tag_list_hidden: bool,
             # use_ekf2_cov: list,
             # *covariance: float
             ):
@@ -627,6 +682,13 @@ def start_slam(set_progress, # This must be the first argument
     start_mavros_cmd = "bash " + mavros_script_path
 
     # Add arguments to commands
+    if is_tag_list_hidden:
+        # If I untick the box I ignore whichever value was set by the user
+        tag = (jetson_tags_slam[0] if platform == 'jetson' else rasp_tags_slam[0])
+        start_slam_cmd = start_slam_cmd + " --tag=" + str(tag)
+    else:
+        start_slam_cmd = start_slam_cmd + " --tag=" + str(tag)
+
     if ext_monitor and ext_monitor[0] == 'External monitor connected':
         start_slam_cmd = start_slam_cmd + " --external-monitor=yes"
 
