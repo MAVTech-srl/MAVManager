@@ -158,7 +158,7 @@ app.layout = [
                 html.Div(className="two columns", hidden=True, id='slam-stopping-div', style={"padding": "10px"},  children=[
                         html.Button(className='button', children=['Stopping SLAM...'], style={'color': 'black', 'background': 'orange'}, disabled=True)
                 ]),
-                html.Div(id='slam-aborted-div'),
+                html.Div(id='slam-aborted-div', hidden=True),
                 html.Div(id="dummy-div")
             ]),
             html.Div(className="six columns", children=[
@@ -682,8 +682,8 @@ def start_slam(set_progress, # This must be the first argument
     start_mavros_cmd = "bash " + mavros_script_path
 
     # Add arguments to commands
-    if is_tag_list_hidden:
-        # If I untick the box I ignore whichever value was set by the user
+    if is_tag_list_hidden or tag is None:
+        # If I untick the box I ignore whichever value was set by the user and use the latest tag
         tag = (jetson_tags_slam[0] if platform == 'jetson' else rasp_tags_slam[0])
         start_slam_cmd = start_slam_cmd + " --tag=" + str(tag)
     else:
